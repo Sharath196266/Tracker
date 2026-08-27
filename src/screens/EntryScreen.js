@@ -139,7 +139,7 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
 
   const handleSave = async () => {
     if (!amount || isNaN(amount) || Number(amount) <= 0) return showAlert('Invalid amount', 'Please enter an amount greater than zero.', 'error');
-    if (!payee.trim()) return showAlert('Payee required', 'Select a source or enter a custom payee.', 'error');
+    if (!payee.trim()) return showAlert('Payee required', 'Select a payee source before saving.', 'error');
 
     const parsedAmount = parseFloat(amount);
     const finalCategory = category;
@@ -222,8 +222,6 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
           {showPlatformInput ? <View style={styles.inlineAdd}><TextInput style={[styles.input, styles.flex]} placeholder="New platform" placeholderTextColor={COLORS.muted} value={customPlatform} onChangeText={setCustomPlatform} /><TouchableOpacity style={styles.smallButton} onPress={addPlatform}><Text style={styles.smallButtonText}>Add</Text></TouchableOpacity><TouchableOpacity style={styles.smallButton} onPress={() => setShowPlatformInput(false)}><Text style={styles.smallButtonText}>Back</Text></TouchableOpacity></View> : null}
           {showPlatformInput && <><Text style={styles.label}>Link platform to sources</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionScroll}>{sources.map((item) => <CustomChip key={item.name} label={item.name} active={linkedSources.includes(item.name)} onPress={() => setLinkedSources((previous) => previous.includes(item.name) ? previous.filter((name) => name !== item.name) : [...previous, item.name])} />)}</ScrollView></>}
 
-          <Text style={styles.label}>Custom Payee</Text>
-          <TextInput style={styles.input} placeholder="Type a custom payee" placeholderTextColor={COLORS.muted} value={payeeSource ? '' : payee} onChangeText={setPayee} />
           {selectedSource.type !== 'credit' && <><Text style={styles.label}>Payee Source</Text><TouchableOpacity style={styles.input} onPress={() => setShowPayees(!showPayees)}><Text style={payee ? styles.valueText : styles.placeholderText}>{payee || 'Select a source'}</Text><Ionicons name={showPayees ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.muted} /></TouchableOpacity>{showPayees && <View style={styles.dropdown}>{sourceOptions.map((item) => <TouchableOpacity key={item.name} style={styles.dropdownItem} onPress={() => { setPayee(item.name); setShowPayees(false); setCategory((PAYEE_CATEGORIES[item.type] || DEFAULT_CATEGORIES)[0]); }}><Text style={styles.valueText}>{item.name}</Text><Text style={styles.dropdownHint}>{TYPE_LABELS[item.type]}</Text></TouchableOpacity>)}</View>}</>}
 
           <View style={styles.row}><View style={styles.flex}><Text style={styles.label}>Amount (₹)</Text><TextInput style={styles.input} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.muted} value={amount} onChangeText={setAmount} /></View><View style={styles.flex}><Text style={styles.label}>Place</Text><TextInput style={styles.input} placeholder="e.g. Bangalore" placeholderTextColor={COLORS.muted} value={place} onChangeText={setPlace} /></View></View>
