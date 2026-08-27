@@ -1,11 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 
-export default function Header() {
+export default function Header({ onBack, userName }) {
   return (
     <View style={styles.headerContainer}>
-      <Text style={styles.title}>Sharath</Text>
+      {onBack && (
+        <TouchableOpacity style={styles.backButton} onPress={onBack} accessibilityLabel="Go back">
+          <Ionicons name="arrow-back" size={20} color={COLORS.text} />
+        </TouchableOpacity>
+      )}
+      <Text style={styles.title}>{userName || 'Tracker'}</Text>
     </View>
   );
 }
@@ -16,7 +22,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     marginBottom: 10,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   title: {
     fontSize: 26,
@@ -24,4 +31,5 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     letterSpacing: 0.5,
   },
+  backButton: { marginRight: 10, padding: 3 },
 });

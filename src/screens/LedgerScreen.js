@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,25 +7,77 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  Alert,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 import Header from '../components/Header';
-import { COLORS, SOURCES, DEFAULT_CATEGORIES } from '../constants/theme';
+import { COLORS, DEFAULT_CATEGORIES } from '../constants/theme';
+import { saveExpensesToStorage } from '../utils/storage';
 
-const PERIODS = ['All', 'This Week', 'This Month', 'Last 6 Months'];
+const STANDARD_PERIODS = ['All', 'This Week', 'This Month', 'Last 6 Months'];
 
-export default function LedgerScreen({ expenses, setExpenses, balances, setBalances }) {
+export default function LedgerScreen({ expenses, setExpenses, balances, setBalances, sources, userName }) {
   const [sourceFilter, setSourceFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [platformFilter, setPlatformFilter] = useState('All');
   const [periodFilter, setPeriodFilter] = useState('All');
+  const [filterDraft, setFilterDraft] = useState({ source: 'All', category: 'All', platform: 'All', period: 'All' });
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [savedPlatforms, setSavedPlatforms] = useState([]);
+  const [savedCategories, setSavedCategories] = useState([]);
 
-  const sourcesList = useMemo(() => ['All', ...SOURCES], []);
-  const categoriesList = useMemo(() => ['All', ...DEFAULT_CATEGORIES], []);
+  useEffect(() => {
+    Promise.all([AsyncStorage.getItem('@custom_platforms'), AsyncStorage.getItem('@custom_categories')]).then(([platforms, categories]) => {
+      try { if (platforms) setSavedPlatforms(JSON.parse(platforms)); } catch {}
+      try { if (categories) setSavedCategories(JSON.parse(categories)); } catch {}
+    });
+  }, []);
+
+  // Custom Alert Modal State
+  const [alertConfig, setAlertConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'success', // 'success' | 'error' | 'confirm'
+    onConfirm: null,
+  });
+
+  const showAlert = (title, message, type = 'success', onConfirm = null) => {
+    setAlertConfig({ visible: true, title, message, type, onConfirm });
+  };
+
+  const hideAlert = () => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  };
+
+  const sourcesList = useMemo(() => ['All', ...new Set([...(sources || []).map((item) => item.name || item), ...expenses.map((item) => item.source)])], [sources, expenses]);
+  const categoriesList = useMemo(() => ['All', ...new Set([...DEFAULT_CATEGORIES, ...savedCategories, ...expenses.map((item) => item.category)])], [expenses, savedCategories]);
+  const platformsList = useMemo(() => ['All', ...new Set([...savedPlatforms, ...expenses.map((item) => item.platform).filter(Boolean)])], [expenses, savedPlatforms]);
+
+  // Dynamically extract distinct "MMM YYYY" months present in expense data
+  const dynamicMonths = useMemo(() => {
+    const monthSet = new Set();
+    expenses.forEach((item) => {
+      const d = new Date(item.rawDate || item.dateTime);
+      if (!isNaN(d.getTime())) {
+        const monthLabel = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+        monthSet.add(monthLabel);
+      }
+    });
+
+    // Sort chronologically (newest month first)
+    return Array.from(monthSet).sort((a, b) => new Date(b) - new Date(a));
+  }, [expenses]);
+
+  // Combined filter list for Period / Month selection
+  const allPeriodOptions = useMemo(
+    () => [...STANDARD_PERIODS, ...dynamicMonths],
+    [dynamicMonths]
+  );
 
   // Amazon-Style Filter Pill Component
   const FilterPill = ({ label, isSelected, onPress }) => (
@@ -52,9 +104,10 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
         )
           return false;
         if (categoryFilter !== 'All' && item.category !== categoryFilter) return false;
+        if (platformFilter !== 'All' && item.platform !== platformFilter) return false;
 
-        const d = new Date(item.dateTime);
-        if (isNaN(d.getTime())) return true;
+        const d = new Date(item.rawDate || item.dateTime);
+        if (isNaN(d.getTime())) return periodFilter === 'All';
 
         if (periodFilter === 'This Week') {
           const startOfWeek = new Date(now);
@@ -70,10 +123,15 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
           sixMonthsAgo.setMonth(now.getMonth() - 6);
           return d >= sixMonthsAgo;
         }
+        if (periodFilter !== 'All') {
+          // Custom month filter matching (e.g., "Aug 2026")
+          const itemMonthLabel = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+          return itemMonthLabel === periodFilter;
+        }
         return true;
       })
       .sort((a, b) => Number(b.id) - Number(a.id));
-  }, [expenses, sourceFilter, categoryFilter, periodFilter]);
+  }, [expenses, sourceFilter, categoryFilter, platformFilter, periodFilter]);
 
   const totalFiltered = useMemo(
     () => filteredExpenses.reduce((sum, item) => sum + item.amount, 0),
@@ -83,88 +141,105 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
   const activeFilterCount =
     (sourceFilter !== 'All' ? 1 : 0) +
     (categoryFilter !== 'All' ? 1 : 0) +
+    (platformFilter !== 'All' ? 1 : 0) +
     (periodFilter !== 'All' ? 1 : 0);
 
   const resetFilters = () => {
     setSourceFilter('All');
     setCategoryFilter('All');
+    setPlatformFilter('All');
     setPeriodFilter('All');
   };
 
-  // CSV Export Utility
+  const openFilters = () => {
+    setFilterDraft({ source: sourceFilter, category: categoryFilter, platform: platformFilter, period: periodFilter });
+    setFilterVisible(true);
+  };
+
+  const applyFilters = () => {
+    setSourceFilter(filterDraft.source);
+    setCategoryFilter(filterDraft.category);
+    setPlatformFilter(filterDraft.platform);
+    setPeriodFilter(filterDraft.period);
+    setFilterVisible(false);
+  };
+
   const handleExportCSV = async () => {
     if (filteredExpenses.length === 0) {
-      Alert.alert('No Data', 'There are no transactions to export.');
+      showAlert('No Data', 'There are no transactions available to export.', 'error');
       return;
     }
 
     try {
-      let csvContent = 'ID,Date & Time,Source,Category,Payee,Place,Amount (INR),Description\n';
+      const headers = 'ID,Date & Time,Source,Category,Payee,Place,Amount (INR),Description\n';
+      const rows = filteredExpenses
+        .map((item) =>
+          [
+            `"${item.id}"`,
+            `"${item.dateTime}"`,
+            `"${item.source}"`,
+            `"${item.category}"`,
+            `"${item.payee.replace(/"/g, '""')}"`,
+            `"${item.place.replace(/"/g, '""')}"`,
+            item.amount,
+            `"${(item.description || 'N/A').replace(/"/g, '""')}"`,
+          ].join(',')
+        )
+        .join('\n');
 
-      filteredExpenses.forEach((item) => {
-        const row = [
-          `"${item.id}"`,
-          `"${item.dateTime}"`,
-          `"${item.source}"`,
-          `"${item.category}"`,
-          `"${item.payee.replace(/"/g, '""')}"`,
-          `"${item.place.replace(/"/g, '""')}"`,
-          item.amount,
-          `"${(item.description || 'N/A').replace(/"/g, '""')}"`,
-        ].join(',');
-        csvContent += row + '\n';
-      });
+      const csvData = headers + rows;
+      const fileName = `Ledger_Export_${Date.now()}.csv`;
+      const file = new File(Paths.cache, fileName);
+      file.write(csvData);
+      const fileUri = file.uri;
 
-      const fileUri = `${FileSystem.documentDirectory}Sharath_Ledger_Export_${Date.now()}.csv`;
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-
-      if (await Sharing.isAvailableAsync()) {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
           dialogTitle: 'Export Ledger CSV',
           UTI: 'public.comma-separated-values-text',
         });
       } else {
-        Alert.alert('Exported', `File saved to: ${fileUri}`);
+        showAlert('Export Saved', `File saved to device cache at: ${fileUri}`, 'success');
       }
     } catch (err) {
-      Alert.alert('Export Error', 'Could not generate CSV file: ' + err.message);
+      showAlert('Export Failed', err.message || 'Unable to generate CSV file.', 'error');
+    }
+  };
+
+  const confirmDeleteAction = async (item) => {
+    hideAlert();
+    const updatedExp = expenses.filter((e) => e.id !== item.id);
+    setExpenses(updatedExp);
+    await saveExpensesToStorage(updatedExp);
+
+    let targetBank = null;
+    const sLower = item.source.toLowerCase();
+    if (sLower.includes('axis')) targetBank = 'Axis';
+    else if (sLower.includes('canara')) targetBank = 'Canara';
+    else if (sLower.includes('yono') || sLower.includes('sbi')) targetBank = 'SBI';
+    else if (sLower.includes('kotak')) targetBank = 'Kotak';
+
+    if (targetBank && balances) {
+      const updatedBal = { ...balances, [targetBank]: balances[targetBank] + item.amount };
+      setBalances(updatedBal);
+      await AsyncStorage.setItem('@balances', JSON.stringify(updatedBal));
     }
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Delete Entry', 'Remove transaction and restore funds to balance?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const updatedExp = expenses.filter((e) => e.id !== item.id);
-          setExpenses(updatedExp);
-          await AsyncStorage.setItem('@expenses', JSON.stringify(updatedExp));
-
-          let targetBank = null;
-          const sLower = item.source.toLowerCase();
-          if (sLower.includes('axis')) targetBank = 'Axis';
-          else if (sLower.includes('canara')) targetBank = 'Canara';
-          else if (sLower.includes('yono') || sLower.includes('sbi')) targetBank = 'SBI';
-          else if (sLower.includes('kotak')) targetBank = 'Kotak';
-
-          if (targetBank && balances) {
-            const updatedBal = { ...balances, [targetBank]: balances[targetBank] + item.amount };
-            setBalances(updatedBal);
-            await AsyncStorage.setItem('@balances', JSON.stringify(updatedBal));
-          }
-        },
-      },
-    ]);
+    showAlert(
+      'Delete Entry',
+      `Are you sure you want to delete this ₹${item.amount.toFixed(2)} entry and restore funds to ${item.source}?`,
+      'confirm',
+      () => confirmDeleteAction(item)
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header />
+      <Header userName={userName} />
 
       {/* Title Bar with Export & Reset Actions */}
       <View style={styles.titleRow}>
@@ -191,61 +266,13 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
         </View>
       </View>
 
-      {/* Amazon-Style Horizontal Filter Drawer */}
-      <View style={styles.amazonFilterContainer}>
-        {/* Source Strip */}
-        <View style={styles.filterGroup}>
-          <Text style={styles.filterLabel}>Source</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {sourcesList.map((s) => (
-              <FilterPill
-                key={s}
-                label={s}
-                isSelected={sourceFilter === s}
-                onPress={() => setSourceFilter(s)}
-              />
-            ))}
-          </ScrollView>
-        </View>
+      <TouchableOpacity style={styles.filterButton} onPress={openFilters}>
+        <Ionicons name="funnel-outline" size={16} color={COLORS.text} />
+        <Text style={styles.filterButtonText}>Filter{activeFilterCount ? ` (${activeFilterCount})` : ''}</Text>
+      </TouchableOpacity>
 
-        {/* Category Strip */}
-        <View style={styles.filterGroup}>
-          <Text style={styles.filterLabel}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {categoriesList.map((c) => (
-              <FilterPill
-                key={c}
-                label={c}
-                isSelected={categoryFilter === c}
-                onPress={() => setCategoryFilter(c)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Period Strip */}
-        <View style={styles.filterGroup}>
-          <Text style={styles.filterLabel}>Period</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {PERIODS.map((p) => (
-              <FilterPill
-                key={p}
-                label={p}
-                isSelected={periodFilter === p}
-                onPress={() => setPeriodFilter(p)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* Filter Summary Banner */}
-      <View style={styles.summaryBanner}>
-        <Text style={styles.summaryText}>
-          Showing <Text style={{ color: COLORS.text, fontWeight: '700' }}>{filteredExpenses.length}</Text> result(s)
-        </Text>
-        <Text style={styles.summaryTotal}>Total: ₹{totalFiltered.toFixed(2)}</Text>
-      </View>
+      {/* Applied filter summary */}
+      <View style={styles.appliedSummary}><Text style={styles.summaryText}>{activeFilterCount ? 'Filters applied' : 'Showing all transactions'}</Text><Text style={styles.summaryTotal}>{filteredExpenses.length} result(s)</Text></View>
 
       {/* Transactions Feed (Newest on Top) */}
       <FlatList
@@ -255,34 +282,84 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
         contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{item.payee}</Text>
-              <Text style={styles.cardAmount}>-₹{item.amount.toFixed(2)}</Text>
-            </View>
-
-            <View style={styles.tagRow}>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{item.source}</Text>
-              </View>
-              <View style={[styles.tag, styles.categoryTag]}>
-                <Text style={styles.tagText}>{item.category}</Text>
-              </View>
-            </View>
-
+            <View style={styles.cardHeader}><Text style={styles.cardTitle}>{item.payee}</Text><Text style={styles.cardAmount}>-₹{item.amount.toFixed(2)}</Text></View>
+            <View style={styles.tagRow}><View style={styles.tag}><Text style={styles.tagText}>{item.source}</Text></View><View style={[styles.tag, styles.categoryTag]}><Text style={styles.tagText}>{item.category}</Text></View></View>
             <Text style={styles.cardMeta}>{item.dateTime} • {item.place}</Text>
-            {item.description !== 'N/A' && (
-              <Text style={styles.cardDesc}>Note: {item.description}</Text>
-            )}
-
-            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)}>
-              <Text style={styles.deleteBtnText}>Delete</Text>
-            </TouchableOpacity>
+            {item.description !== 'N/A' && <Text style={styles.cardDesc}>Note: {item.description}</Text>}
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)}><Text style={styles.deleteBtnText}>Delete</Text></TouchableOpacity>
           </View>
         )}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>No transactions match the selected filters.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.emptyText}>No transactions match the selected filters.</Text>}
       />
+
+      <Modal transparent visible={filterVisible} animationType="slide">
+        <View style={styles.filterModalOverlay}><View style={styles.filterModal}>
+          <View style={styles.modalHeader}><Text style={styles.modalTitle}>Filter Ledger</Text><TouchableOpacity onPress={() => setFilterVisible(false)}><Ionicons name="close" size={22} color={COLORS.text} /></TouchableOpacity></View>
+          <Text style={styles.filterLabel}>Source</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{sourcesList.map((item) => <FilterPill key={item} label={item} isSelected={filterDraft.source === item} onPress={() => setFilterDraft({ ...filterDraft, source: item })} />)}</ScrollView>
+          <Text style={styles.filterLabel}>Category</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{categoriesList.map((item) => <FilterPill key={item} label={item} isSelected={filterDraft.category === item} onPress={() => setFilterDraft({ ...filterDraft, category: item })} />)}</ScrollView>
+          <Text style={styles.filterLabel}>Platform</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{platformsList.map((item) => <FilterPill key={item} label={item} isSelected={filterDraft.platform === item} onPress={() => setFilterDraft({ ...filterDraft, platform: item })} />)}</ScrollView>
+          <Text style={styles.filterLabel}>Period</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>{allPeriodOptions.map((item) => <FilterPill key={item} label={item} isSelected={filterDraft.period === item} onPress={() => setFilterDraft({ ...filterDraft, period: item })} />)}</ScrollView>
+          <View style={styles.modalActionRow}><TouchableOpacity style={styles.cancelFilterButton} onPress={() => setFilterVisible(false)}><Text>Cancel</Text></TouchableOpacity><TouchableOpacity style={styles.applyFilterButton} onPress={applyFilters}><Text style={styles.applyFilterText}>Apply filters</Text></TouchableOpacity></View>
+        </View></View>
+      </Modal>
+
+      {/* Custom Modal Alert */}
+      <Modal transparent visible={alertConfig.visible} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.alertCard}>
+            <View
+              style={[
+                styles.iconContainer,
+                {
+                  backgroundColor:
+                    alertConfig.type === 'success'
+                      ? COLORS.mint || COLORS.primary
+                      : alertConfig.type === 'confirm'
+                      ? COLORS.sand || COLORS.cardBorder
+                      : COLORS.blush || COLORS.danger,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  alertConfig.type === 'success'
+                    ? 'checkmark-circle'
+                    : alertConfig.type === 'confirm'
+                    ? 'help-circle'
+                    : 'alert-circle'
+                }
+                size={26}
+                color={COLORS.text}
+              />
+            </View>
+            <Text style={styles.alertTitle}>{alertConfig.title}</Text>
+            <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+
+            {alertConfig.type === 'confirm' ? (
+              <View style={styles.modalActionRow}>
+                <TouchableOpacity
+                  style={[styles.alertBtn, styles.cancelBtn]}
+                  onPress={hideAlert}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.alertBtn, styles.dangerBtn]}
+                  onPress={alertConfig.onConfirm}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.alertBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.alertBtn} onPress={hideAlert} activeOpacity={0.8}>
+                <Text style={styles.alertBtnText}>Continue</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -343,6 +420,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  filterButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 10, paddingVertical: 10, marginBottom: 8 },
+  filterButtonText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
+  appliedSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.chipBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: COLORS.cardBorder },
+  filterModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  filterModal: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 28 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
+  filterRow: { flexDirection: 'row', gap: 6, paddingBottom: 4 },
+  cancelFilterButton: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: COLORS.cardBorder },
+  applyFilterButton: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center', backgroundColor: COLORS.text },
+  applyFilterText: { color: '#FFF', fontWeight: '700' },
   amazonFilterContainer: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
@@ -477,4 +565,47 @@ const styles = StyleSheet.create({
     marginTop: 30,
     fontSize: 13,
   },
+
+  // Modal Alert Styling
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  alertCard: {
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  alertTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 4 },
+  alertMessage: { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginBottom: 16 },
+  modalActionRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  alertBtn: {
+    backgroundColor: COLORS.text,
+    width: '100%',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  cancelBtn: { flex: 1, backgroundColor: COLORS.chipBg, borderWidth: 1, borderColor: COLORS.border },
+  dangerBtn: { flex: 1, backgroundColor: COLORS.danger },
+  cancelBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  alertBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
