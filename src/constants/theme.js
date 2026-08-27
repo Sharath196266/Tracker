@@ -17,17 +17,29 @@ export const COLORS = {
 };
 
 export const DEFAULT_CATEGORIES = [
-  'Shopping',
-  'Dine Out / Food',
+  'Food / Dine Out',
+  'Fashion',
   'Travel',
-  'Transfer',
-  'Insurance',
-  'Card Bills',
-  'Recharge',
-  'Medical',
-  'Entertainment',
-  'Other',
+  'Recharges',
+  'Subscription',
+  'Grocery',
+  'Vegetables',
+  'General Shopping',
 ];
+
+export const SOURCE_CATEGORIES = {
+  savings: ['Transfer', 'Deposit'],
+  credit: ['Early Payment', 'Bill Payment'],
+  loan: ['Disbursement'],
+  investment: ['Withdrawal'],
+};
+
+export const PAYEE_CATEGORIES = {
+  savings: ['Transfer'],
+  credit: ['Early Payment', 'Bill Payment'],
+  loan: ['Repayment'],
+  investment: ['Investment Add'],
+};
 
 export const SOURCES = [
   'Axis',

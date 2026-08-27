@@ -6,36 +6,27 @@ import {
   FlatList,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Header from '../components/Header';
-import { COLORS, DEFAULT_CATEGORIES } from '../constants/theme';
+import { COLORS, DEFAULT_CATEGORIES, SOURCE_CATEGORIES, PAYEE_CATEGORIES } from '../constants/theme';
 import { saveExpensesToStorage } from '../utils/storage';
 
 const STANDARD_PERIODS = ['All', 'This Week', 'This Month', 'Last 6 Months'];
 
-export default function LedgerScreen({ expenses, setExpenses, balances, setBalances, sources, userName }) {
+export default function LedgerScreen({ expenses, setExpenses, balances, setBalances, sources, userName, customPlatforms = [], customCategories = [] }) {
   const [sourceFilter, setSourceFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [platformFilter, setPlatformFilter] = useState('All');
   const [periodFilter, setPeriodFilter] = useState('All');
   const [filterDraft, setFilterDraft] = useState({ source: 'All', category: 'All', platform: 'All', period: 'All' });
   const [filterVisible, setFilterVisible] = useState(false);
-  const [savedPlatforms, setSavedPlatforms] = useState([]);
-  const [savedCategories, setSavedCategories] = useState([]);
-
-  useEffect(() => {
-    Promise.all([AsyncStorage.getItem('@custom_platforms'), AsyncStorage.getItem('@custom_categories')]).then(([platforms, categories]) => {
-      try { if (platforms) setSavedPlatforms(JSON.parse(platforms)); } catch {}
-      try { if (categories) setSavedCategories(JSON.parse(categories)); } catch {}
-    });
-  }, []);
 
   // Custom Alert Modal State
   const [alertConfig, setAlertConfig] = useState({
@@ -55,8 +46,14 @@ export default function LedgerScreen({ expenses, setExpenses, balances, setBalan
   };
 
   const sourcesList = useMemo(() => ['All', ...new Set([...(sources || []).map((item) => item.name || item), ...expenses.map((item) => item.source)])], [sources, expenses]);
-  const categoriesList = useMemo(() => ['All', ...new Set([...DEFAULT_CATEGORIES, ...savedCategories, ...expenses.map((item) => item.category)])], [expenses, savedCategories]);
-  const platformsList = useMemo(() => ['All', ...new Set([...savedPlatforms, ...expenses.map((item) => item.platform).filter(Boolean)])], [expenses, savedPlatforms]);
+  const categoriesList = useMemo(() => ['All', ...new Set([
+    ...DEFAULT_CATEGORIES,
+    ...Object.values(SOURCE_CATEGORIES).flat(),
+    ...Object.values(PAYEE_CATEGORIES).flat(),
+    ...customCategories,
+    ...expenses.map((item) => item.category),
+  ])], [expenses, customCategories]);
+  const platformsList = useMemo(() => ['All', ...new Set([...customPlatforms, ...expenses.map((item) => item.platform).filter(Boolean)])], [expenses, customPlatforms]);
 
   // Dynamically extract distinct "MMM YYYY" months present in expense data
   const dynamicMonths = useMemo(() => {

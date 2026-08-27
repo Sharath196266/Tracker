@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Dimensions, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PieChart, LineChart } from 'react-native-chart-kit';
 import Header from '../components/Header';
 import SummaryCard from '../components/SummaryCard';
@@ -24,7 +25,7 @@ export default function StatsScreen({ expenses, userName }) {
     return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
   }), [expenses, period, source]);
 
-  const spendExpenses = filteredExpenses.filter((item) => !['Card Bill', 'Early Card Payment', 'Loan EMI', 'Early Loan Payment', 'Investment Withdrawal'].includes(item.category));
+  const spendExpenses = filteredExpenses.filter((item) => !['Early Payment', 'Bill Payment', 'Repayment', 'Withdrawal', 'Card Bill', 'Early Card Payment', 'Loan EMI', 'Early Loan Payment', 'Investment Withdrawal'].includes(item.category));
 
   // Repayments are excluded here because the original card or loan purchase is already spend.
   const sourceTotalsMap = {};

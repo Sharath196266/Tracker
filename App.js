@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Modal, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import EntryScreen from './src/screens/EntryScreen';
 import LedgerScreen from './src/screens/LedgerScreen';
@@ -14,6 +15,7 @@ import { COLORS } from './src/constants/theme';
 const Tab = createBottomTabNavigator();
 const INITIAL_BALANCES = { Axis: 0, Canara: 0, SBI: 0, Kotak: 0, KreditPe: 0, 'Edu Loan': 0, 'Cred Loan': 0 };
 const INITIAL_SOURCES = Object.keys(INITIAL_BALANCES).map((name) => ({ name, type: 'savings' }));
+const OPTION_CATALOG_VERSION = '3';
 INITIAL_SOURCES[4].type = 'credit';
 INITIAL_SOURCES[5].type = 'loan';
 INITIAL_SOURCES[6].type = 'loan';
@@ -30,21 +32,40 @@ const parseStoredValue = (value, fallback) => {
 export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [balances, setBalances] = useState(INITIAL_BALANCES);
+  const [balanceTransactions, setBalanceTransactions] = useState([]);
   const [sources, setSources] = useState(INITIAL_SOURCES);
   const [userName, setUserName] = useState('');
   const [nameInput, setNameInput] = useState('');
+  const [customPlatforms, setCustomPlatforms] = useState([]);
+  const [customCategories, setCustomCategories] = useState([]);
 
   useEffect(() => {
     (async () => {
-      const savedExp = await AsyncStorage.getItem('@expenses');
+      const currentExpenses = await AsyncStorage.getItem('@expenses');
+      const savedExp = currentExpenses || await AsyncStorage.getItem('@expenses_data_v1');
       const savedBal = await AsyncStorage.getItem('@balances');
+      const savedBalanceTransactions = await AsyncStorage.getItem('@balance_transactions');
       const savedSources = await AsyncStorage.getItem('@balance_sources');
       const savedName = await AsyncStorage.getItem('@user_name');
+      const optionCatalogVersion = await AsyncStorage.getItem('@option_catalog_version');
+      if (optionCatalogVersion !== OPTION_CATALOG_VERSION) {
+        await AsyncStorage.multiRemove(['@custom_platforms', '@custom_categories', '@platform_links']);
+        await AsyncStorage.setItem('@option_catalog_version', OPTION_CATALOG_VERSION);
+      }
+      const savedPlatforms = parseStoredValue(await AsyncStorage.getItem('@custom_platforms'), []);
+      const savedCategories = parseStoredValue(await AsyncStorage.getItem('@custom_categories'), []);
+      if (Array.isArray(savedPlatforms)) setCustomPlatforms(savedPlatforms);
+      if (Array.isArray(savedCategories)) setCustomCategories(savedCategories);
       if (savedName) setUserName(savedName);
       const parsedExpenses = parseStoredValue(savedExp, []);
       const parsedBalances = parseStoredValue(savedBal, INITIAL_BALANCES);
+      const parsedBalanceTransactions = parseStoredValue(savedBalanceTransactions, []);
       if (Array.isArray(parsedExpenses)) setExpenses(parsedExpenses);
+      if (!currentExpenses && Array.isArray(parsedExpenses)) {
+        await AsyncStorage.setItem('@expenses', JSON.stringify(parsedExpenses));
+      }
       if (parsedBalances && typeof parsedBalances === 'object' && !Array.isArray(parsedBalances)) setBalances(parsedBalances);
+      if (Array.isArray(parsedBalanceTransactions)) setBalanceTransactions(parsedBalanceTransactions);
       if (savedSources) {
         const savedSourceList = parseStoredValue(savedSources, INITIAL_SOURCES);
         const saved = (Array.isArray(savedSourceList) ? savedSourceList : INITIAL_SOURCES).map((item) => typeof item === 'string' ? { name: item, type: 'savings' } : item);
@@ -56,7 +77,9 @@ export default function App() {
         await AsyncStorage.setItem('@balance_sources', JSON.stringify(merged));
       }
       else await AsyncStorage.setItem('@balance_sources', JSON.stringify(INITIAL_SOURCES));
-    })();
+    })().catch((error) => {
+      console.error('Failed to restore Tracker data', error);
+    });
   }, []);
 
   const saveUserName = async () => {
@@ -67,6 +90,7 @@ export default function App() {
   };
 
   return (
+    <SafeAreaProvider>
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={{
@@ -102,6 +126,12 @@ export default function App() {
               sources={sources}
               setSources={setSources}
               userName={userName}
+              customPlatforms={customPlatforms}
+              setCustomPlatforms={setCustomPlatforms}
+              customCategories={customCategories}
+              setCustomCategories={setCustomCategories}
+              balanceTransactions={balanceTransactions}
+              setBalanceTransactions={setBalanceTransactions}
             />
           )}
         </Tab.Screen>
@@ -123,6 +153,8 @@ export default function App() {
               setBalances={setBalances}
               sources={sources}
               userName={userName}
+              customPlatforms={customPlatforms}
+              customCategories={customCategories}
             />
           )}
         </Tab.Screen>
@@ -136,7 +168,7 @@ export default function App() {
             ),
           }}
         >
-          {() => <BalanceScreen balances={balances} setBalances={setBalances} sources={sources} setSources={setSources} userName={userName} />}
+          {() => <BalanceScreen balances={balances} setBalances={setBalances} sources={sources} setSources={setSources} balanceTransactions={balanceTransactions} setBalanceTransactions={setBalanceTransactions} userName={userName} />}
         </Tab.Screen>
 
         <Tab.Screen
@@ -160,6 +192,7 @@ export default function App() {
         </View></View>
       </Modal>
     </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 

@@ -6,17 +6,17 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Header from '../components/Header';
 import CustomChip from '../components/CustomChip';
-import { COLORS } from '../constants/theme';
+import { COLORS, SOURCE_CATEGORIES } from '../constants/theme';
 
 const DEFAULT_SOURCES = [
   { name: 'Axis', type: 'savings' },
@@ -31,16 +31,10 @@ const SOURCE_TYPES = [
   { value: 'loan', label: 'Loan' },
   { value: 'investment', label: 'Investment' },
 ];
-const TRANSACTION_TYPES = {
-  savings: ['Deposit', 'Transfer In', 'Transfer Out'],
-  credit: ['Card Usage', 'Early Card Payment', 'Card Bill'],
-  loan: ['Loan Disbursement', 'Loan EMI', 'Early Loan Payment'],
-  investment: ['Investment Add', 'Investment SIP', 'Investment Withdrawal'],
-};
+const TRANSACTION_TYPES = SOURCE_CATEGORIES;
 
-export default function BalanceScreen({ balances, setBalances, sources, setSources, userName }) {
+export default function BalanceScreen({ balances, setBalances, sources, setSources, balanceTransactions = [], setBalanceTransactions, userName }) {
   const [view, setView] = useState('main');
-  const [transactions, setTransactions] = useState([]);
   const [selectedSource, setSelectedSource] = useState(DEFAULT_SOURCES[0].name);
   const [sourceType, setSourceType] = useState('savings');
   const [sourceName, setSourceName] = useState('');
@@ -57,28 +51,11 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
 
   useEffect(() => {
     (async () => {
-      const savedSources = await AsyncStorage.getItem('@balance_sources');
-      const savedTransactions = await AsyncStorage.getItem('@balance_transactions');
-      if (savedSources && !sources.length) {
-        const parsedSources = JSON.parse(savedSources).map((source) =>
-          typeof source === 'string' ? { name: source, type: 'savings' } : source
-        );
-        setSources(parsedSources);
-        if (parsedSources.length) setSelectedSource(parsedSources[0].name);
-      } else {
-        await AsyncStorage.setItem('@balance_sources', JSON.stringify(DEFAULT_SOURCES));
-      }
-      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
     })();
   }, []);
 
   const showAlert = (title, message, type = 'success') =>
     setAlertConfig({ visible: true, title, message, type });
-
-  const saveSources = async (updatedSources) => {
-    setSources(updatedSources);
-    await AsyncStorage.setItem('@balance_sources', JSON.stringify(updatedSources));
-  };
 
   const handleAddSource = async (confirmed = false) => {
     if (!permissionGranted && !confirmed) {
@@ -97,12 +74,21 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
     const initialAmount = sourceType === 'loan' ? parseFloat(sourceAmount) : 0;
     const updatedBalances = { ...balances, [name]: initialAmount };
     const sourceTransaction = { id: `${Date.now()}-source`, source: name, type: 'Source Added', sourceType, amount: 0, direction: 'in', description: 'Source created', date: new Date().toISOString() };
-    const updatedTransactions = [sourceTransaction, ...transactions];
-    await saveSources(updatedSources);
+    const updatedTransactions = [sourceTransaction, ...balanceTransactions];
+    try {
+      await AsyncStorage.multiSet([
+        ['@balance_sources', JSON.stringify(updatedSources)],
+        ['@balances', JSON.stringify(updatedBalances)],
+        ['@balance_transactions', JSON.stringify(updatedTransactions)],
+      ]);
+    } catch (error) {
+      showAlert('Save failed', 'The source was not added. Please try again.', 'error');
+      console.error('Failed to add source', error);
+      return;
+    }
+    setSources(updatedSources);
     setBalances(updatedBalances);
-    setTransactions(updatedTransactions);
-    await AsyncStorage.setItem('@balances', JSON.stringify(updatedBalances));
-    await AsyncStorage.setItem('@balance_transactions', JSON.stringify(updatedTransactions));
+    setBalanceTransactions(updatedTransactions);
     setSourceName('');
     setSourceAmount('');
     showAlert('Source added', `${name} is ready to use.`);
@@ -120,9 +106,18 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
     if (!updatedSources.length) return showAlert('Keep one source', 'Add another source before deleting this one.', 'error');
     const updatedBalances = { ...balances };
     delete updatedBalances[source];
-    await saveSources(updatedSources);
+    try {
+      await AsyncStorage.multiSet([
+        ['@balance_sources', JSON.stringify(updatedSources)],
+        ['@balances', JSON.stringify(updatedBalances)],
+      ]);
+    } catch (error) {
+      showAlert('Delete failed', 'The source was not deleted. Please try again.', 'error');
+      console.error('Failed to delete source', error);
+      return;
+    }
+    setSources(updatedSources);
     setBalances(updatedBalances);
-    await AsyncStorage.setItem('@balances', JSON.stringify(updatedBalances));
     if (selectedSource === source) setSelectedSource(updatedSources[0].name);
   };
 
@@ -136,7 +131,7 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
   const confirmDeposit = async () => {
     const added = parseFloat(amount);
     const selectedSourceRecord = sources.find((source) => source.name === selectedSource);
-    const balanceDirection = ['Early Card Payment', 'Card Bill', 'Loan EMI', 'Early Loan Payment', 'Investment Withdrawal'].includes(transactionType) ? -1 : 1;
+    const balanceDirection = ['Early Payment', 'Bill Payment', 'Withdrawal'].includes(transactionType) ? -1 : 1;
     const updatedBalances = { ...balances, [selectedSource]: (balances[selectedSource] || 0) + (added * balanceDirection) };
     const transaction = {
       id: Date.now().toString(),
@@ -151,14 +146,22 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
     let updatedSources = sources;
     if (selectedSourceRecord?.type === 'loan' && (updatedBalances[selectedSource] || 0) <= 0) {
       updatedSources = sources.filter((source) => source.name !== selectedSource);
-      setSources(updatedSources);
-      await AsyncStorage.setItem('@balance_sources', JSON.stringify(updatedSources));
     }
-    const updatedTransactions = [transaction, ...transactions];
+    const updatedTransactions = [transaction, ...balanceTransactions];
+    try {
+      await AsyncStorage.multiSet([
+        ['@balances', JSON.stringify(updatedBalances)],
+        ['@balance_transactions', JSON.stringify(updatedTransactions)],
+        ['@balance_sources', JSON.stringify(updatedSources)],
+      ]);
+    } catch (error) {
+      showAlert('Save failed', 'The balance was not changed. Please try again.', 'error');
+      console.error('Failed to save balance transaction', error);
+      return;
+    }
     setBalances(updatedBalances);
-    setTransactions(updatedTransactions);
-    await AsyncStorage.setItem('@balances', JSON.stringify(updatedBalances));
-    await AsyncStorage.setItem('@balance_transactions', JSON.stringify(updatedTransactions));
+    setBalanceTransactions(updatedTransactions);
+    if (updatedSources !== sources) setSources(updatedSources);
     setAmount('');
     setDescription('');
     setVerificationStep(0);
@@ -266,7 +269,7 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
         {view === 'transactions' && (
           <>
             <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Source transactions</Text><Text style={styles.sectionHint}>Deposits and movements recorded from Wallet</Text></View>
-            {transactions.length === 0 ? <Text style={styles.emptyText}>No source transactions yet.</Text> : transactions.map((transaction) => (
+            {balanceTransactions.length === 0 ? <Text style={styles.emptyText}>No source transactions yet.</Text> : balanceTransactions.map((transaction) => (
               <View key={transaction.id} style={styles.transactionRow}>
                 <View style={styles.transactionIcon}><Ionicons name="arrow-down" size={18} color={COLORS.accentGreen} /></View>
                 <View style={styles.transactionDetails}><Text style={styles.sourceTitle}>{transaction.type}</Text><Text style={styles.sourceAmount}>{transaction.source} · {transaction.description}</Text><Text style={styles.transactionDate}>{new Date(transaction.date).toLocaleString('en-IN')}</Text></View>
