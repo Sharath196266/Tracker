@@ -55,14 +55,35 @@ export default function StatsScreen({ expenses, userName }) {
     legendFontSize: 12,
   }));
 
-  // 3. Spend Trend Line Data
-  const chronological = [...spendExpenses].reverse();
-  const lineLabels = chronological.length > 0 
-    ? chronological.slice(-6).map((_, idx) => `T${idx + 1}`) 
-    : ['T0'];
-  const lineData = chronological.length > 0 
-    ? chronological.slice(-6).map((e) => e.amount) 
-    : [0];
+  // 3. Spend Trend Line Data, grouped by calendar day.
+  const dailyTotals = {};
+  spendExpenses.forEach((expense) => {
+    const date = new Date(expense.rawDate || expense.dateTime);
+    if (!Number.isNaN(date.getTime())) {
+      const dayKey = date.toISOString().slice(0, 10);
+      dailyTotals[dayKey] = (dailyTotals[dayKey] || 0) + expense.amount;
+    }
+  });
+  const dailyTrend = Object.entries(dailyTotals).sort(([first], [second]) => first.localeCompare(second));
+  const now = new Date();
+  const trendDays = period === 'Week' ? 7 : period === 'Month' ? new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() : dailyTrend.length;
+  const trendStart = period === 'Week'
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)
+    : period === 'Month'
+      ? new Date(now.getFullYear(), now.getMonth(), 1)
+      : null;
+  const visibleDailyTrend = trendStart
+    ? Array.from({ length: trendDays }, (_, index) => {
+      const date = new Date(trendStart.getFullYear(), trendStart.getMonth(), trendStart.getDate() + index);
+      const day = date.toISOString().slice(0, 10);
+      return [day, dailyTotals[day] || 0];
+    })
+    : dailyTrend;
+  const lineLabels = visibleDailyTrend.length > 0 ? visibleDailyTrend.map(([day]) => {
+    const date = new Date(`${day}T00:00:00`);
+    return `${date.getDate()}/${date.getMonth() + 1}`;
+  }) : ['No days'];
+  const lineData = visibleDailyTrend.length > 0 ? visibleDailyTrend.map(([, total]) => total) : [0];
 
   const grandTotal = spendExpenses.reduce((sum, e) => sum + e.amount, 0);
   const screenWidth = Dimensions.get('window').width - 32;
@@ -145,7 +166,7 @@ export default function StatsScreen({ expenses, userName }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 40 },
+  container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 12 },
   screenSubTitle: { fontSize: 18, fontWeight: '700', marginBottom: 10, color: COLORS.text, letterSpacing: 0.5 },
   subHeader: { fontSize: 15, fontWeight: '600', marginTop: 18, marginBottom: 10, color: COLORS.primary },
   chartWrapper: { backgroundColor: COLORS.card, borderRadius: 12, paddingVertical: 10, borderWidth: 1, borderColor: COLORS.cardBorder, alignItems: 'center' },

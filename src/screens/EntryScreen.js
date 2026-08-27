@@ -19,12 +19,7 @@ import Header from '../components/Header';
 import CustomChip from '../components/CustomChip';
 import { COLORS, DEFAULT_CATEGORIES, PAYEE_CATEGORIES, SOURCE_CATEGORIES } from '../constants/theme';
 
-const FALLBACK_SOURCES = [
-  { name: 'Axis', type: 'savings' },
-  { name: 'Canara', type: 'savings' },
-  { name: 'SBI', type: 'savings' },
-  { name: 'Kotak', type: 'savings' },
-];
+const FALLBACK_SOURCES = [];
 const TYPE_LABELS = { savings: 'Bank', credit: 'Credit Card', loan: 'Loan', investment: 'Investment' };
 const PLATFORM_OPTIONS = {
   savings: [],
@@ -34,7 +29,7 @@ const PLATFORM_OPTIONS = {
 };
 export default function EntryScreen({ expenses, setExpenses, balances, setBalances, sources: sharedSources, setSources, userName, customPlatforms = [], setCustomPlatforms, customCategories = [], setCustomCategories, balanceTransactions = [], setBalanceTransactions }) {
   const sources = sharedSources?.length ? sharedSources : FALLBACK_SOURCES;
-  const [source, setSource] = useState(FALLBACK_SOURCES[0].name);
+  const [source, setSource] = useState('');
   const [platform, setPlatform] = useState(PLATFORM_OPTIONS.savings[0]);
   const [customPlatform, setCustomPlatform] = useState('');
   const [category, setCategory] = useState(DEFAULT_CATEGORIES[0]);
@@ -47,6 +42,7 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showPayees, setShowPayees] = useState(false);
+  const [payeeMode, setPayeeMode] = useState('custom');
   const [showPlatformInput, setShowPlatformInput] = useState(false);
   const [showCategoryInput, setShowCategoryInput] = useState(false);
   const [platformLinks, setPlatformLinks] = useState({});
@@ -69,7 +65,7 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
     });
   }, []);
 
-  const selectedSource = sources.find((item) => item.name === source) || FALLBACK_SOURCES[0];
+  const selectedSource = sources.find((item) => item.name === source) || { name: '', type: 'savings' };
   const sourceOptions = useMemo(() => sources.filter((item) => item.name !== source), [sources, source]);
   const payeeIsSource = sources.some((item) => item.name.toLowerCase() === payee.trim().toLowerCase());
   const payeeSource = sources.find((item) => item.name.toLowerCase() === payee.trim().toLowerCase());
@@ -222,9 +218,13 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
           {showPlatformInput ? <View style={styles.inlineAdd}><TextInput style={[styles.input, styles.flex]} placeholder="New platform" placeholderTextColor={COLORS.muted} value={customPlatform} onChangeText={setCustomPlatform} /><TouchableOpacity style={styles.smallButton} onPress={addPlatform}><Text style={styles.smallButtonText}>Add</Text></TouchableOpacity><TouchableOpacity style={styles.smallButton} onPress={() => setShowPlatformInput(false)}><Text style={styles.smallButtonText}>Back</Text></TouchableOpacity></View> : null}
           {showPlatformInput && <><Text style={styles.label}>Link platform to sources</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionScroll}>{sources.map((item) => <CustomChip key={item.name} label={item.name} active={linkedSources.includes(item.name)} onPress={() => setLinkedSources((previous) => previous.includes(item.name) ? previous.filter((name) => name !== item.name) : [...previous, item.name])} />)}</ScrollView></>}
 
-          <Text style={styles.label}>Custom Payee</Text>
-          <TextInput style={styles.input} placeholder="Person or business name" placeholderTextColor={COLORS.muted} value={payeeSource ? '' : payee} onChangeText={setPayee} />
-          {selectedSource.type !== 'credit' && <><Text style={styles.label}>Payee</Text><TouchableOpacity style={styles.input} onPress={() => setShowPayees(!showPayees)}><Text style={payee ? styles.valueText : styles.placeholderText}>{payee || 'Select a source'}</Text><Ionicons name={showPayees ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.muted} /></TouchableOpacity>{showPayees && <View style={styles.dropdown}>{sourceOptions.map((item) => <TouchableOpacity key={item.name} style={styles.dropdownItem} onPress={() => { setPayee(item.name); setShowPayees(false); setCategory((PAYEE_CATEGORIES[item.type] || DEFAULT_CATEGORIES)[0]); }}><Text style={styles.valueText}>{item.name}</Text><Text style={styles.dropdownHint}>{TYPE_LABELS[item.type]}</Text></TouchableOpacity>)}</View>}</>}
+          <Text style={styles.label}>Payee</Text>
+          <View style={styles.payeeModeRow}>
+            <TouchableOpacity style={[styles.modeButton, payeeMode === 'custom' && styles.modeButtonActive]} onPress={() => { setPayeeMode('custom'); setShowPayees(false); setPayee(''); setCategory(DEFAULT_CATEGORIES[0]); }}><Text style={styles.modeButtonText}>Custom person / business</Text></TouchableOpacity>
+            {selectedSource.type !== 'credit' && <TouchableOpacity style={[styles.modeButton, payeeMode === 'source' && styles.modeButtonActive]} onPress={() => { setPayeeMode('source'); setShowPayees(true); setPayee(''); }}><Text style={styles.modeButtonText}>Source</Text></TouchableOpacity>}
+          </View>
+          {payeeMode === 'custom' ? <TextInput style={styles.input} placeholder="Person or business name" placeholderTextColor={COLORS.muted} value={payee} onChangeText={setPayee} /> : <TouchableOpacity style={styles.input} onPress={() => setShowPayees(!showPayees)}><Text style={payee ? styles.valueText : styles.placeholderText}>{payee || 'Select a source'}</Text><Ionicons name={showPayees ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.muted} /></TouchableOpacity>}
+          {payeeMode === 'source' && showPayees && <View style={styles.dropdown}>{sourceOptions.map((item) => <TouchableOpacity key={item.name} style={styles.dropdownItem} onPress={() => { setPayee(item.name); setShowPayees(false); setCategory((PAYEE_CATEGORIES[item.type] || DEFAULT_CATEGORIES)[0]); }}><Text style={styles.valueText}>{item.name}</Text><Text style={styles.dropdownHint}>{TYPE_LABELS[item.type]}</Text></TouchableOpacity>)}</View>}
 
           <View style={styles.row}><View style={styles.flex}><Text style={styles.label}>Amount (₹)</Text><TextInput style={styles.input} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.muted} value={amount} onChangeText={setAmount} /></View><View style={styles.flex}><Text style={styles.label}>Place</Text><TextInput style={styles.input} placeholder="e.g. Bangalore" placeholderTextColor={COLORS.muted} value={place} onChangeText={setPlace} /></View></View>
           <Text style={styles.label}>Category</Text>
@@ -241,5 +241,5 @@ export default function EntryScreen({ expenses, setExpenses, balances, setBalanc
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 36 }, content: { paddingBottom: 34 }, screenTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, marginBottom: 6 }, label: { fontSize: 12, fontWeight: '700', color: COLORS.muted, marginTop: 10, marginBottom: 6 }, row: { flexDirection: 'row', gap: 10, marginBottom: 2 }, input: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, color: COLORS.text }, dateTimeBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }, dateTimeText: { fontSize: 12, fontWeight: '700', color: COLORS.text }, chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, optionLine: { flexDirection: 'row', alignItems: 'center', gap: 6 }, optionScroll: { flexGrow: 1, gap: 5, paddingBottom: 3 }, addButton: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: COLORS.cardBorder, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center' }, inlineAdd: { flexDirection: 'row', gap: 7, marginTop: 6 }, smallButton: { backgroundColor: COLORS.text, borderRadius: 10, paddingHorizontal: 15, justifyContent: 'center' }, smallButtonText: { color: '#FFF', fontWeight: '700' }, placeholderText: { color: COLORS.muted, flex: 1 }, valueText: { color: COLORS.text, flex: 1 }, dropdown: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 10, marginTop: 4, padding: 5 }, dropdownItem: { padding: 9, borderBottomWidth: 1, borderBottomColor: COLORS.cardBorder, flexDirection: 'row', justifyContent: 'space-between' }, dropdownHint: { color: COLORS.muted, fontSize: 11 }, description: { minHeight: 58, textAlignVertical: 'top' }, submitBtn: { backgroundColor: COLORS.text, paddingVertical: 12, borderRadius: 12, marginTop: 18, alignItems: 'center' }, submitBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }, alertCard: { width: '100%', backgroundColor: COLORS.card, borderRadius: 20, padding: 20, alignItems: 'center' }, alertTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginTop: 8 }, alertMessage: { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginVertical: 8 }, alertBtn: { backgroundColor: COLORS.text, width: '100%', paddingVertical: 10, borderRadius: 10, alignItems: 'center', marginTop: 6 }, alertBtnText: { color: '#FFF', fontWeight: '700' },
+  flex: { flex: 1 }, container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 36 }, content: { paddingBottom: 34 }, screenTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, marginBottom: 6 }, label: { fontSize: 12, fontWeight: '700', color: COLORS.muted, marginTop: 10, marginBottom: 6 }, row: { flexDirection: 'row', gap: 10, marginBottom: 2 }, input: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 13, color: COLORS.text }, dateTimeBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }, dateTimeText: { fontSize: 12, fontWeight: '700', color: COLORS.text }, chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, optionLine: { flexDirection: 'row', alignItems: 'center', gap: 6 }, optionScroll: { flexGrow: 1, gap: 5, paddingBottom: 3 }, addButton: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: COLORS.cardBorder, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center' }, inlineAdd: { flexDirection: 'row', gap: 7, marginTop: 6 }, smallButton: { backgroundColor: COLORS.text, borderRadius: 10, paddingHorizontal: 15, justifyContent: 'center' }, smallButtonText: { color: '#FFF', fontWeight: '700' }, payeeModeRow: { flexDirection: 'row', gap: 6, marginBottom: 6 }, modeButton: { flex: 1, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 9, paddingVertical: 9, alignItems: 'center', backgroundColor: COLORS.card }, modeButtonActive: { backgroundColor: COLORS.mint, borderColor: COLORS.mint }, modeButtonText: { color: COLORS.text, fontSize: 11, fontWeight: '700' }, placeholderText: { color: COLORS.muted, flex: 1 }, valueText: { color: COLORS.text, flex: 1 }, dropdown: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 10, marginTop: 4, padding: 5 }, dropdownItem: { padding: 9, borderBottomWidth: 1, borderBottomColor: COLORS.cardBorder, flexDirection: 'row', justifyContent: 'space-between' }, dropdownHint: { color: COLORS.muted, fontSize: 11 }, description: { minHeight: 58, textAlignVertical: 'top' }, submitBtn: { backgroundColor: COLORS.text, paddingVertical: 12, borderRadius: 12, marginTop: 18, alignItems: 'center' }, submitBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }, alertCard: { width: '100%', backgroundColor: COLORS.card, borderRadius: 20, padding: 20, alignItems: 'center' }, alertTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginTop: 8 }, alertMessage: { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginVertical: 8 }, alertBtn: { backgroundColor: COLORS.text, width: '100%', paddingVertical: 10, borderRadius: 10, alignItems: 'center', marginTop: 6 }, alertBtnText: { color: '#FFF', fontWeight: '700' },
 });

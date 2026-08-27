@@ -18,7 +18,7 @@ export default function Header({ onBack, userName }) {
 
 const styles = StyleSheet.create({
   headerContainer: {
-    paddingVertical: 12,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     marginBottom: 10,

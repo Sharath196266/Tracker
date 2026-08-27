@@ -13,12 +13,9 @@ import StatsScreen from './src/screens/StatsScreen';
 import { COLORS } from './src/constants/theme';
 
 const Tab = createBottomTabNavigator();
-const INITIAL_BALANCES = { Axis: 0, Canara: 0, SBI: 0, Kotak: 0, KreditPe: 0, 'Edu Loan': 0, 'Cred Loan': 0 };
-const INITIAL_SOURCES = Object.keys(INITIAL_BALANCES).map((name) => ({ name, type: 'savings' }));
+const INITIAL_BALANCES = {};
+const INITIAL_SOURCES = [];
 const OPTION_CATALOG_VERSION = '3';
-INITIAL_SOURCES[4].type = 'credit';
-INITIAL_SOURCES[5].type = 'loan';
-INITIAL_SOURCES[6].type = 'loan';
 
 const parseStoredValue = (value, fallback) => {
   try {
@@ -38,6 +35,9 @@ export default function App() {
   const [nameInput, setNameInput] = useState('');
   const [customPlatforms, setCustomPlatforms] = useState([]);
   const [customCategories, setCustomCategories] = useState([]);
+  const [screenRefreshKey, setScreenRefreshKey] = useState(0);
+
+  const refreshScreen = () => setScreenRefreshKey((currentKey) => currentKey + 1);
 
   useEffect(() => {
     (async () => {
@@ -110,6 +110,7 @@ export default function App() {
       >
         <Tab.Screen
           name="Entry"
+          listeners={{ tabPress: refreshScreen }}
           options={{
             tabBarLabel: 'Entry',
             tabBarIcon: ({ color, size }) => (
@@ -118,7 +119,7 @@ export default function App() {
           }}
         >
           {() => (
-            <EntryScreen
+            <EntryScreen key={`entry-${screenRefreshKey}`}
               expenses={expenses}
               setExpenses={setExpenses}
               balances={balances}
@@ -138,6 +139,7 @@ export default function App() {
 
         <Tab.Screen
           name="Ledger"
+          listeners={{ tabPress: refreshScreen }}
           options={{
             tabBarLabel: 'Ledger',
             tabBarIcon: ({ color, size }) => (
@@ -146,7 +148,7 @@ export default function App() {
           }}
         >
           {() => (
-            <LedgerScreen
+            <LedgerScreen key={`ledger-${screenRefreshKey}`}
               expenses={expenses}
               setExpenses={setExpenses}
               balances={balances}
@@ -161,6 +163,7 @@ export default function App() {
 
         <Tab.Screen
           name="Balances"
+          listeners={{ tabPress: refreshScreen }}
           options={{
             tabBarLabel: 'Wallet',
             tabBarIcon: ({ color, size }) => (
@@ -168,11 +171,12 @@ export default function App() {
             ),
           }}
         >
-          {() => <BalanceScreen balances={balances} setBalances={setBalances} sources={sources} setSources={setSources} balanceTransactions={balanceTransactions} setBalanceTransactions={setBalanceTransactions} userName={userName} />}
+          {() => <BalanceScreen key={`balances-${screenRefreshKey}`} balances={balances} setBalances={setBalances} sources={sources} setSources={setSources} balanceTransactions={balanceTransactions} setBalanceTransactions={setBalanceTransactions} userName={userName} />}
         </Tab.Screen>
 
         <Tab.Screen
           name="Stats"
+          listeners={{ tabPress: refreshScreen }}
           options={{
             tabBarLabel: 'Analytics',
             tabBarIcon: ({ color, size }) => (
@@ -180,7 +184,7 @@ export default function App() {
             ),
           }}
         >
-          {() => <StatsScreen expenses={expenses} sources={sources} userName={userName} />}
+          {() => <StatsScreen key={`stats-${screenRefreshKey}`} expenses={expenses} sources={sources} userName={userName} />}
         </Tab.Screen>
       </Tab.Navigator>
       <Modal transparent visible={!userName} animationType="fade">

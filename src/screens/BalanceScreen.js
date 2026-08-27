@@ -18,12 +18,7 @@ import Header from '../components/Header';
 import CustomChip from '../components/CustomChip';
 import { COLORS, SOURCE_CATEGORIES } from '../constants/theme';
 
-const DEFAULT_SOURCES = [
-  { name: 'Axis', type: 'savings' },
-  { name: 'Canara', type: 'savings' },
-  { name: 'SBI', type: 'savings' },
-  { name: 'Kotak', type: 'savings' },
-];
+const DEFAULT_SOURCES = [];
 const PASTEL_BG = [COLORS.mint, COLORS.lavender, COLORS.sand, COLORS.blush];
 const SOURCE_TYPES = [
   { value: 'savings', label: 'Savings / Bank' },
@@ -35,7 +30,7 @@ const TRANSACTION_TYPES = SOURCE_CATEGORIES;
 
 export default function BalanceScreen({ balances, setBalances, sources, setSources, balanceTransactions = [], setBalanceTransactions, userName }) {
   const [view, setView] = useState('main');
-  const [selectedSource, setSelectedSource] = useState(DEFAULT_SOURCES[0].name);
+  const [selectedSource, setSelectedSource] = useState('');
   const [sourceType, setSourceType] = useState('savings');
   const [sourceName, setSourceName] = useState('');
   const [sourceAmount, setSourceAmount] = useState('');
@@ -327,7 +322,7 @@ export default function BalanceScreen({ balances, setBalances, sources, setSourc
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 36 },
+  flex: { flex: 1 }, container: { flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 12 },
   content: { paddingBottom: 28 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   screenTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, flex: 1 },

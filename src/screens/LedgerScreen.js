@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     paddingHorizontal: 16,
-    paddingTop: 40,
+    paddingTop: 12,
   },
   titleRow: {
     flexDirection: 'row',
