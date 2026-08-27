@@ -1,5 +1,5 @@
-node_modules/
-.git/
-.expo/
-dist/
+node_modules
+.git
+.expo
+dist
 .DS_Store
